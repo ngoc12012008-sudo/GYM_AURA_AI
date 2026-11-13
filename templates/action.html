@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% set page_title = "Cần gọi" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Cần gọi</h1>
+    </div>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" id="btnCsv"><i class="bi bi-filetype-csv me-1"></i>CSV</button>
+    <button class="btn btn-primary" id="btnXlsx"><i class="bi bi-file-earmark-excel me-1"></i>Xuất Excel</button>
+  </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+  <div class="d-flex flex-wrap gap-2 mb-3" id="groupChips"></div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4"><label class="form-label">Tìm kiếm</label>
+      <div class="position-relative"><i class="bi bi-search position-absolute text-secondary" style="left:.75rem;top:50%;transform:translateY(-50%)"></i>
+        <input id="fQ" class="form-control ps-5" placeholder="Tên, số điện thoại, mã hội viên…"></div></div>
+    <div class="col-6 col-md-2"><label class="form-label">Mức rủi ro</label>
+      <select id="fRisk" class="form-select"><option value="">Tất cả</option>{% for r in RISK_ORDER %}<option>{{ r }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-md-2"><label class="form-label">Hạng CLV</label>
+      <select id="fClv" class="form-select"><option value="">Tất cả</option>{% for c in CLV_ORDER %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-md-2"><label class="form-label">Ẩn đã liên hệ trong</label>
+      <select id="fHide" class="form-select"><option value="0">Không ẩn</option><option value="3">3 ngày</option><option value="7" selected>7 ngày</option><option value="14">14 ngày</option><option value="30">30 ngày</option></select></div>
+    <div class="col-6 col-md-2"><div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" id="fHidden" checked><label class="form-check-label small" for="fHidden">Thêm "rủi ro ẩn" do AI phát hiện</label></div></div>
+  </div>
+</div></div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table table-hover table-click" id="tbl">
+      <thead><tr>
+        <th class="sortable" data-key="ho_ten">Hội viên</th>
+        <th class="sortable" data-key="churn_score">Churn</th><th class="sortable" data-key="p_ai">AI dự báo</th>
+        <th class="sortable" data-key="clv">CLV</th><th>Nhóm</th><th>Lý do</th><th class="sortable num" data-key="con_lai">Thẻ còn</th><th>Liên hệ cuối</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="card-footer d-flex justify-content-between align-items-center" id="pager"></div>
+</div>
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="detail">
+  <div class="offcanvas-header">
+    <div class="d-flex align-items-center gap-3"><span class="avatar avatar-lg" id="dAvatar"></span>
+      <div><h5 class="mb-0" id="dName"></h5><div class="text-secondary small" id="dSub"></div></div></div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div class="d-flex flex-wrap gap-2 mb-3" id="dBadges"></div>
+    <div class="kv mb-3" id="dKv"></div>
+    <div class="mb-3"><div class="form-label">Lý do</div><div id="dWhy"></div></div>
+    <div class="script-box mb-3"><div class="fw-semibold mb-1" id="dGroup"></div><div id="dScript"></div></div>
+    <div class="d-flex justify-content-between align-items-center mb-1"><span class="form-label mb-0"><i class="bi bi-chat-text me-1"></i>Tin nhắn gợi ý</span>
+      <button class="btn btn-sm btn-outline-secondary" id="dCopy"><i class="bi bi-clipboard"></i> Sao chép</button></div>
+    <div class="msg-box mb-3" id="dMsg"></div>
+    <div class="card mb-3"><div class="card-header"><h6 class="card-title">Ghi nhận kết quả liên hệ</h6></div>
+      <div class="card-body">
+        <form id="fContact">
+          <div class="mb-2"><label class="form-label">Kênh</label>
+            <div class="d-flex flex-wrap gap-2">{% for c in channels %}<input type="radio" class="btn-check" name="kenh" id="k{{ loop.index }}" value="{{ c }}" {% if loop.first %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="k{{ loop.index }}">{{ c }}</label>{% endfor %}</div></div>
+          <div class="mb-2"><label class="form-label">Kết quả</label>
+            <select class="form-select" name="ket_qua">{% for r in results %}<option>{{ r }}</option>{% endfor %}</select></div>
+          <div class="mb-3"><label class="form-label">Ghi chú / lý do khách nêu</label><textarea class="form-control" name="ghi_chu" rows="2"></textarea></div>
+          <button class="btn btn-primary w-100" type="submit"><i class="bi bi-check2-circle me-1"></i>Lưu kết quả</button>
+        </form>
+      </div></div>
+    <div class="d-flex justify-content-between align-items-center mb-2"><span class="form-label mb-0">Lịch sử liên hệ</span><a class="small" id="dProfile" href="#">Xem hồ sơ đầy đủ</a></div>
+    <div id="dHist" class="small"></div>
+  </div>
+</div>
+<form id="xlsxForm" method="post" action="/tai/danh-sach.xlsx" class="d-none"><input name="ids"></form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ROWS = {{ act.rows|tojson }};
+const SHOW_CN = {{ 'true' if branch == ALL else 'false' }};
+const LAST = {{ act.last|tojson }};
+const GROUPS = Object.keys(GROUP_COLORS);
+const SHORT = { "Nhóm 1 – Ưu tiên số 1": "Nhóm 1", "Nhóm 2 – Ưu tiên số 2": "Nhóm 2", "Nhóm 3 – Ưu tiên số 3": "Nhóm 3", "Theo dõi sát": "Theo dõi sát", "Nhóm 4 – Theo dõi": "Nhóm 4" };
+const CHIP = { "Nhóm 1 – Ưu tiên số 1": "Nhóm 1: rủi ro cao, VIP", "Nhóm 2 – Ưu tiên số 2": "Nhóm 2: rủi ro cao, Medium", "Nhóm 3 – Ưu tiên số 3": "Nhóm 3: rủi ro cao, Low", "Theo dõi sát": "Theo dõi sát", "Nhóm 4 – Theo dõi": "Nhóm 4: an toàn" };
+const sel = new Set(GROUPS.slice(0, 3));
+let current = null;
+const off = new bootstrap.Offcanvas("#detail");
+
+function chips() {
+  const cnt = {}; ROWS.forEach(r => cnt[r.nhom_can_thiep] = (cnt[r.nhom_can_thiep] || 0) + 1);
+  document.getElementById("groupChips").innerHTML = GROUPS.map(g => `<span class="chip ${sel.has(g) ? "on" : ""}" data-g="${esc(g)}"><span class="dot" style="background:${GROUP_COLORS[g]}"></span>${esc(CHIP[g])} <span class="n">${vn(cnt[g] || 0)}</span></span>`).join("");
+  document.querySelectorAll("#groupChips .chip").forEach(c => c.onclick = () => { sel.has(c.dataset.g) ? sel.delete(c.dataset.g) : sel.add(c.dataset.g); chips(); apply(); });
+}
+function filtered() {
+  const q = document.getElementById("fQ").value.trim().toLowerCase(), risk = document.getElementById("fRisk").value, clv = document.getElementById("fClv").value;
+  const hide = +document.getElementById("fHide").value, hidden = document.getElementById("fHidden").checked;
+  const cut = Date.now() - hide * 864e5;
+  return ROWS.filter(r => (sel.has(r.nhom_can_thiep) || (hidden && r.ai_canh_bao === "Rủi ro ẩn"))
+    && (!risk || r.muc_rui_ro === risk) && (!clv || r.hang_clv === clv)
+    && (!q || (r.ma_hv + " " + r.ho_ten + " " + r.so_dien_thoai).toLowerCase().includes(q))
+    && (!hide || !LAST[r.ma_hv] || new Date(LAST[r.ma_hv].ts).getTime() < cut));
+}
+function render(r) {
+  const c = RISK_COLORS[r.muc_rui_ro], l = LAST[r.ma_hv];
+  return `<tr data-ma="${esc(r.ma_hv)}">
+    <td class="text-nowrap"><div class="fw-semibold">${esc(r.ho_ten)}</div><div class="text-secondary small">${esc(r.so_dien_thoai)}${SHOW_CN ? ", " + esc(r.chi_nhanh) : ""}</div></td>
+    <td style="min-width:120px">${scoreBar(r.churn_score, c)}</td>
+    <td>${r.p_ai === null ? "–" : `<span class="fw-semibold">${pct(r.p_ai)}</span>`}${r.ai_canh_bao === "Rủi ro ẩn" ? '<div><span class="tag warnNone">Rủi ro ẩn</span></div>' : ""}</td>
+    <td class="text-nowrap"><span class="fw-semibold">${tr(r.clv)}</span> <span class="small" style="color:${CLV_COLORS[r.hang_clv]}">${r.hang_clv}</span></td>
+    <td class="text-nowrap">${badge(SHORT[r.nhom_can_thiep], GROUP_COLORS[r.nhom_can_thiep])}</td>
+    <td class="small text-secondary" style="min-width:220px;max-width:300px">${esc(r.ly_do)}</td>
+    <td class="text-nowrap ${r.con_lai < 15 ? "text-danger fw-semibold" : ""}">${r.con_lai < 0 ? "Hết hạn" : r.con_lai + " ngày"}</td>
+    <td class="small">${l ? `<div class="fw-semibold">${esc(l.kq)}</div><div class="text-secondary">${esc(l.t)}</div>` : '<span class="text-secondary">Chưa liên hệ</span>'}</td></tr>`;
+}
+const T = makeTable({ tbody: document.querySelector("#tbl tbody"), rows: [], render, pager: document.getElementById("pager"),
+  head: document.querySelector("#tbl thead"), sortKey: "priority", sortDir: -1 });
+function apply() { T.set(filtered()); }
+["fQ", "fRisk", "fClv", "fHide", "fHidden"].forEach(id => document.getElementById(id).addEventListener(id === "fQ" ? "input" : "change", apply));
+document.querySelector("#tbl tbody").addEventListener("click", e => { const tr = e.target.closest("tr[data-ma]"); if (tr) openDetail(tr.dataset.ma); });
+
+async function loadHist(ma) {
+  const h = await api("/api/contacts/" + encodeURIComponent(ma), undefined, "GET");
+  document.getElementById("dHist").innerHTML = h.length ? h.map(x => `<div class="feed-item py-2"><div class="feed-icon"><i class="bi bi-telephone"></i></div><div><div class="fw-semibold">${esc(x.kq)}</div><div class="feed-meta">${esc(x.t)}, ${esc(x.nv)} qua ${esc(String(x.kenh).toLowerCase())}${x.note ? ". " + esc(x.note) : ""}</div></div></div>`).join("")
+    : '<div class="text-secondary">Chưa liên hệ lần nào.</div>';
+}
+function openDetail(ma) {
+  const r = ROWS.find(x => x.ma_hv === ma); if (!r) return;
+  current = r; const c = RISK_COLORS[r.muc_rui_ro];
+  document.getElementById("dAvatar").textContent = initials(r.ho_ten); document.getElementById("dAvatar").style.background = avColor(r.ho_ten);
+  document.getElementById("dName").textContent = r.ho_ten;
+  document.getElementById("dSub").innerHTML = `${esc(r.ma_hv)}, <a href="tel:${esc(r.so_dien_thoai)}">${esc(r.so_dien_thoai)}</a>, ${esc(r.chi_nhanh)}`;
+  document.getElementById("dBadges").innerHTML = badge(r.muc_rui_ro, c) + badge("CLV " + r.hang_clv, CLV_COLORS[r.hang_clv]) + badge(r.trang_thai, "#8a948e") + (r.ai_canh_bao ? badge(r.ai_canh_bao, RISK_COLORS["Rủi ro cao"]) : "");
+  document.getElementById("dKv").innerHTML = `<div><div class="k">Churn Score</div><div class="v" style="color:${c}">${r.churn_score}</div><div class="s">${esc(r.muc_rui_ro)}</div></div>
+    <div><div class="k">AI dự báo</div><div class="v">${pct(r.p_ai)}</div><div class="s">bỏ trong 90 ngày</div></div>
+    <div><div class="k">CLV</div><div class="v">${tr(r.clv)}</div><div class="s">Priority ${vn(r.priority)}</div></div>
+    <div><div class="k">Gói hiện tại</div><div class="v" style="font-size:.9rem">${esc(r.loai_goi)}</div><div class="s">hết hạn ${ddmm(r.ngay_het_han)}</div></div>
+    <div><div class="k">Thẻ còn</div><div class="v">${r.con_lai < 0 ? "Hết" : r.con_lai}</div><div class="s">ngày</div></div>
+    <div><div class="k">Buổi 30 ngày</div><div class="v">${r.buoi_30}</div><div class="s">lượt tập</div></div>`;
+  document.getElementById("dWhy").textContent = r.ly_do;
+  document.getElementById("dGroup").innerHTML = `${esc(SHORT[r.nhom_can_thiep])}, người phụ trách: <span class="text-primary">${esc(r.phu_trach)}</span>`;
+  document.getElementById("dScript").textContent = r.kich_ban;
+  document.getElementById("dMsg").textContent = r.msg;
+  document.getElementById("dProfile").href = "/hoi-vien/" + encodeURIComponent(ma);
+  document.getElementById("dHist").innerHTML = '<span class="text-secondary">Đang tải…</span>';
+  loadHist(ma); off.show();
+}
+document.getElementById("dCopy").onclick = e => current && copyText(current.msg, e.currentTarget);
+document.getElementById("fContact").onsubmit = async e => {
+  e.preventDefault(); if (!current) return;
+  const f = new FormData(e.target), btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const j = await api("/api/contact", { ma_hv: current.ma_hv, ket_qua: f.get("ket_qua"), kenh: f.get("kenh"), ghi_chu: f.get("ghi_chu"), nhan_vien: localStorage.getItem("aura-staff") || "Lễ tân" });
+    LAST[current.ma_hv] = { t: j.t, ts: j.ts, kq: j.kq };
+    toast(`Đã lưu: <b>${esc(current.ho_ten)}</b> – ${esc(j.kq)}`);
+    e.target.reset(); loadHist(current.ma_hv); T.redraw();
+  } catch (err) { toast(err.message, "danger"); }
+  btn.disabled = false;
+};
+function exportIds() { const r = filtered(); r.sort((a, b) => b.priority - a.priority); return r; }
+document.getElementById("btnXlsx").onclick = () => { const f = document.getElementById("xlsxForm"); f.ids.value = JSON.stringify(exportIds().map(r => r.ma_hv)); f.submit(); };
+document.getElementById("btnCsv").onclick = () => {
+  const head = ["Priority", "Mã", "Họ tên", "SĐT", "Chi nhánh", "Churn Score", "Mức rủi ro", "AI dự báo (%)", "CLV", "Hạng CLV", "Kịch bản", "Lý do", "Thẻ còn (ngày)"];
+  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const lines = exportIds().map(r => [r.priority, r.ma_hv, r.ho_ten, r.so_dien_thoai, r.chi_nhanh, r.churn_score, r.muc_rui_ro, r.p_ai === null ? "" : Math.round(r.p_ai * 100), r.clv, r.hang_clv, r.nhom_can_thiep, r.ly_do, r.con_lai].map(q).join(","));
+  const blob = new Blob(["﻿" + [head.map(q).join(","), ...lines].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "danh_sach_can_thiep.csv"; a.click();
+};
+chips(); apply();
+const pre = new URLSearchParams(location.search).get("ma");
+if (pre) openDetail(pre);
+</script>
+{% endblock %}

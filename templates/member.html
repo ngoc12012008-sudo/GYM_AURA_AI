@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set page_title = "Hồ sơ hội viên" %}
+{% block content %}
+{% if m.x is none %}
+<div class="page-header"><div><h1>Hội viên</h1></div></div>
+{% if m.missing %}<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>Không tìm thấy hội viên <b>{{ m.missing }}</b> trong danh sách đang còn hạn / vừa hết hạn.</div>{% endif %}
+<div class="card">
+  <div class="card-header"><h5 class="card-title">Danh sách hội viên ({{ m.members|length }})</h5>
+    <div class="position-relative" style="width:320px;max-width:100%"><i class="bi bi-search position-absolute text-secondary" style="left:.75rem;top:50%;transform:translateY(-50%)"></i>
+      <input id="mq" class="form-control ps-5" placeholder="Tên, SĐT, mã…" autofocus></div></div>
+  <div class="table-wrap"><table class="table table-hover table-click" id="mt">
+    <thead><tr><th class="sortable" data-key="ma_hv">Mã</th><th class="sortable" data-key="ho_ten">Họ tên</th><th>SĐT</th><th class="sortable" data-key="chi_nhanh">Chi nhánh</th><th class="sortable sorted" data-key="churn_score">Churn</th><th>Mức</th></tr></thead>
+    <tbody></tbody></table></div>
+  <div class="card-footer d-flex justify-content-between align-items-center" id="mp"></div>
+</div>
+{% else %}
+{% set x = m.x %}{% set rc = RISK_COLORS[x.muc_rui_ro] %}
+<div class="page-header">
+  <div class="d-flex align-items-center gap-3">
+    <span class="avatar avatar-lg">{{ x.ho_ten.split()[-2][0] ~ x.ho_ten.split()[-1][0] }}</span>
+    <div>
+      <div class="small mb-1"><a href="/hoi-vien" class="text-decoration-none">Hội viên</a></div>
+      <h1>{{ x.ho_ten }}</h1>
+      <div class="sub mt-1">Mã {{ m.ma }}, <a href="tel:{{ x.so_dien_thoai }}">{{ x.so_dien_thoai }}</a>{% if x.gioi_tinh == x.gioi_tinh and x.gioi_tinh %}, {{ x.gioi_tinh|lower }}{% endif %}. Chi nhánh {{ x.chi_nhanh }}, tham gia {{ x.ngay_tham_gia|ddmm }}. Gói {{ x.loai_goi }}, hết hạn {{ x.ngay_het_han|ddmm }}.</div>
+      <div class="mt-2">
+        <span class="badge-soft"><span class="dot" style="background:{{ rc }}"></span><span>{{ x.muc_rui_ro }}</span></span>
+        <span class="badge-soft"><span class="dot" style="background:{{ CLV_COLORS[x.hang_clv] }}"></span><span>CLV {{ x.hang_clv }}</span></span>
+        <span class="badge-soft"><span>{{ x.trang_thai }}</span></span>
+        {% if x.co_pt %}<span class="badge-soft"><span>Có PT</span></span>{% endif %}
+        {% if x.tap_nhom %}<span class="badge-soft"><span>Tập nhóm hoặc cùng bạn</span></span>{% endif %}
+        {% if x.ai_canh_bao %}<span class="tag warn ms-2">{{ x.ai_canh_bao }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="page-actions"><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mContact"><i class="bi bi-telephone-plus me-1" aria-hidden="true"></i>Ghi nhận liên hệ</button></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header"><h5 class="card-title">Churn Score</h5></div>
+    <div class="card-body"><div class="chart-box sm position-relative"><canvas id="cGauge"></canvas>
+      <div class="position-absolute start-50 translate-middle-x text-center" style="bottom:22%"><div class="stat-value" style="font-size:2.4rem;color:{{ rc }}">{{ x.churn_score }}</div><div class="text-secondary small">{{ x.muc_rui_ro }}</div></div></div>
+      <div class="script-box mt-2 small"><b>{{ x.nhom_can_thiep }}, {{ x.phu_trach|lower }}:</b> {{ x.kich_ban }}</div></div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header"><h5 class="card-title">Điểm theo nhóm chỉ số</h5></div>
+    <div class="card-body">{% if m.bd|select('ne', 0)|list %}<div class="chart-box sm"><canvas id="cBreak"></canvas></div>{% endif %}
+      <div class="small mt-2">{% if m.bd|select('ne', 0)|list|length == 0 %}Không bị cộng điểm ở nhóm nào. {% endif %}{{ x.ly_do }}</div></div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header"><h5 class="card-title">Chỉ số chính</h5></div>
+    <div class="card-body"><div class="kv" style="grid-template-columns:1fr 1fr">
+      <div><div class="k">AI dự báo bỏ</div><div class="v">{{ x.p_ai|pct }}</div><div class="s">trong 90 ngày</div></div>
+      <div><div class="k">CLV tích lũy</div><div class="v">{{ x.clv|tr }}</div><div class="s">thẻ {{ x.tong_the|tr }}, PT {{ x.tong_pt|tr }}</div></div>
+      <div><div class="k">CLV dự báo</div><div class="v">{{ x.clv_du_bao_cn|tr }}</div><div class="s">{% if x.tuoi_tho_thang == x.tuoi_tho_thang %}~{{ x.tuoi_tho_thang|num }} tháng nữa{% endif %}</div></div>
+      <div><div class="k">Buổi 14 ngày</div><div class="v">{{ x.buoi_14 }}</div><div class="s">14 ngày trước: {{ x.buoi_14_truoc }}</div></div>
+      <div><div class="k">Vắng</div><div class="v">{{ x.ngay_vang }} ngày</div><div class="s">lần cuối {{ x.lan_cuoi|ddmm }}</div></div>
+      <div><div class="k">Thẻ còn</div><div class="v {{ 'text-danger' if x.con_lai < 15 }}">{{ x.con_lai }} ngày</div><div class="s">mức ưu tiên {{ x.priority|num }}</div></div>
+    </div></div></div></div>
+</div>
+
+<div class="card mb-3 section-gap"><div class="card-header"><div><h5 class="card-title">Số buổi tập mỗi tuần</h5></div></div>
+  <div class="card-body"><div class="chart-box"><canvas id="cWeeks"></canvas></div></div></div>
+
+<div class="row g-3">
+  <div class="col-lg-7"><div class="card h-100">
+    <div class="card-header p-0 px-3"><ul class="nav nav-tabs card-header-tabs border-0" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tGt">Gói thẻ ({{ m.gt|length }})</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tPt">Gói PT ({{ m.pt|length }})</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tDg">Đánh giá ({{ m.dg|length }})</button></li></ul></div>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tGt"><div class="table-wrap"><table class="table"><thead><tr><th>Gói</th><th class="text-end">Giá</th><th>Bắt đầu</th><th>Hết hạn</th></tr></thead><tbody>
+        {% for g in m.gt.itertuples() %}<tr><td>{{ g.loai_goi }}</td><td class="text-end">{{ g.gia|vnd }}</td><td>{{ g.ngay_bat_dau|ddmm }}</td><td>{{ g.ngay_het_han|ddmm }}</td></tr>{% endfor %}</tbody></table></div></div>
+      <div class="tab-pane fade" id="tPt">{% if m.pt|length %}<div class="table-wrap"><table class="table"><thead><tr><th>Gói PT</th><th>Số buổi</th><th class="text-end">Giá</th><th>Ngày mua</th></tr></thead><tbody>
+        {% for g in m.pt.itertuples() %}<tr><td>{{ g.loai_pt }}</td><td>{{ g.so_buoi }}</td><td class="text-end">{{ g.gia|vnd }}</td><td>{{ g.ngay_mua|ddmm }}</td></tr>{% endfor %}</tbody></table></div>
+        <div class="p-3 small text-secondary">Còn {{ x.pt_con_buoi }} buổi chưa tập, đã ngưng đặt lịch {{ x.pt_ngung }} ngày</div>
+        {% else %}<div class="empty-state"><i class="bi bi-person-arms-up"></i><div class="mt-2">Chưa mua gói PT</div></div>{% endif %}</div>
+      <div class="tab-pane fade" id="tDg">{% if m.dg|length %}<div class="table-wrap"><table class="table"><thead><tr><th>Ngày</th><th>Đánh giá</th><th>Nội dung</th><th>Khiếu nại</th></tr></thead><tbody>
+        {% for g in m.dg.itertuples() %}<tr><td>{{ g.ngay|ddmm }}</td><td class="stars text-nowrap">{{ '★' * (g.so_sao|int) }}<span class="text-secondary">{{ '☆' * (5 - g.so_sao|int) }}</span></td><td>{{ g.noi_dung }}</td>
+          <td>{% if g.khieu_nai %}{% if g.da_xu_ly %}<span class="tagNone">Đã xử lý</span>{% else %}<span class="tag warnNone">Chưa xử lý</span>{% endif %}{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+        {% else %}<div class="empty-state"><i class="bi bi-star"></i><div class="mt-2">Chưa có đánh giá</div></div>{% endif %}</div>
+    </div></div></div>
+  <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h5 class="card-title">Lịch sử liên hệ</h5></div>
+    <div class="card-body py-1" id="hist">
+      {% for h in m.lh.itertuples() %}<div class="feed-item"><div class="feed-icon"><i class="bi bi-telephone"></i></div><div><div class="feed-title">{{ h.ket_qua }}</div>
+        <div class="feed-meta">{{ h.thoi_gian.strftime('%d/%m/%Y %H:%M') }}, {{ h.nhan_vien }}{% if h.kenh %} qua {{ h.kenh|lower }}{% endif %}{% if h.ghi_chu %}. {{ h.ghi_chu }}{% endif %}</div></div></div>
+      {% else %}<div class="empty-state"><i class="bi bi-chat-square"></i><div class="mt-2">Chưa liên hệ lần nào</div></div>{% endfor %}
+    </div></div></div>
+</div>
+
+<div class="modal fade" id="mContact" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Ghi nhận liên hệ – {{ x.ho_ten }}</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <form id="fContact"><div class="modal-body">
+    <div class="d-flex justify-content-between align-items-center mb-1"><span class="form-label mb-0">Tin nhắn gợi ý</span><button type="button" class="btn btn-sm btn-outline-secondary" id="cp"><i class="bi bi-clipboard"></i> Sao chép</button></div>
+    <div class="msg-box mb-3" id="msg">{{ m.msg }}</div>
+    <div class="mb-2"><label class="form-label">Kênh</label><select class="form-select" name="kenh">{% for c in channels %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="mb-2"><label class="form-label">Kết quả</label><select class="form-select" name="ket_qua">{% for r in results %}<option>{{ r }}</option>{% endfor %}</select></div>
+    <div><label class="form-label">Ghi chú</label><textarea class="form-control" name="ghi_chu" rows="2"></textarea></div>
+  </div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-primary">Lưu kết quả</button></div></form>
+</div></div></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if m.x is none %}
+const MEM = {{ m.members|tojson }};
+const MT = makeTable({ tbody: document.querySelector("#mt tbody"), rows: MEM, pager: document.getElementById("mp"), head: document.querySelector("#mt thead"), sortKey: "churn_score",
+  render: r => `<tr onclick="location.href='/hoi-vien/${encodeURIComponent(r.ma_hv)}'"><td class="text-secondary">${esc(r.ma_hv)}</td><td class="fw-semibold">${esc(r.ho_ten)}</td><td>${esc(r.so_dien_thoai)}</td><td>${esc(r.chi_nhanh)}</td><td style="min-width:120px">${scoreBar(r.churn_score, RISK_COLORS[r.muc_rui_ro])}</td><td>${badge(r.muc_rui_ro, RISK_COLORS[r.muc_rui_ro])}</td></tr>` });
+document.getElementById("mq").oninput = e => { const q = e.target.value.trim().toLowerCase(); MT.set(MEM.filter(r => (r.ma_hv + " " + r.ho_ten + " " + r.so_dien_thoai).toLowerCase().includes(q))); };
+{% else %}
+const score = {{ m.x.churn_score|int }}, rc = "{{ RISK_COLORS[m.x.muc_rui_ro] }}";
+makeChart("cGauge", { type: "doughnut", data: { datasets: [{ data: [score, 100 - score], backgroundColor: [rc, cssVar("--sunken")], borderWidth: 0 }] },
+  options: { rotation: -90, circumference: 180, cutout: "78%", plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+const BD = {{ m.bd|tojson }};
+makeChart("cBreak", { type: "bar", data: { labels: ["Tần suất (45%)", "Hợp đồng (30%)", "Phản hồi (15%)", "PT & nhóm (10%)"],
+  datasets: [{ data: BD, backgroundColor: BD.map(v => v >= 0 ? RISK_COLORS["Cực kỳ nguy hiểm"] : RISK_COLORS["An toàn"]), borderRadius: 5, maxBarThickness: 22 }] },
+  options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: { ...axisGrid, suggestedMax: 40, suggestedMin: -10 }, y: axisNoGrid } } });
+const W = {{ m.weeks|tojson }}, SR = {{ m.series|tojson }};
+makeChart("cWeeks", { type: "bar", data: { labels: W, datasets: Object.keys(SR).map(k => ({ label: k, data: SR[k], backgroundColor: KIND_COLORS[k], borderRadius: 3, maxBarThickness: 22 })) },
+  options: { plugins: { legend: { position: "top", align: "end" } }, scales: { x: { ...axisNoGrid, stacked: true }, y: { ...axisGrid, stacked: true, ticks: { precision: 0 } } } } });
+document.getElementById("cp").onclick = e => copyText(document.getElementById("msg").textContent, e.currentTarget);
+document.getElementById("fContact").onsubmit = async e => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { const j = await api("/api/contact", { ma_hv: "{{ m.ma }}", ket_qua: f.get("ket_qua"), kenh: f.get("kenh"), ghi_chu: f.get("ghi_chu"), nhan_vien: localStorage.getItem("aura-staff") || "Lễ tân" });
+    bootstrap.Modal.getInstance("#mContact").hide(); toast("Đã lưu kết quả: " + esc(j.kq));
+    const h = document.getElementById("hist"); if (h.querySelector(".empty-state")) h.innerHTML = "";
+    h.insertAdjacentHTML("afterbegin", `<div class="feed-item"><div class="feed-icon"><i class="bi bi-telephone"></i></div><div><div class="feed-title">${esc(j.kq)}</div><div class="feed-meta">${esc(j.t)}, ${esc(localStorage.getItem("aura-staff") || "Lễ tân")} qua ${esc(String(f.get("kenh")).toLowerCase())}${f.get("ghi_chu") ? ". " + esc(f.get("ghi_chu")) : ""}</div></div></div>`);
+    e.target.reset();
+  } catch (err) { toast(err.message, "danger"); }
+};
+{% endif %}
+</script>
+{% endblock %}

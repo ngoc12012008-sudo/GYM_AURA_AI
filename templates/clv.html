@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set page_title = "Doanh thu & CLV" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Doanh thu & CLV</h1></div>
+  <div class="card mb-0" style="min-width:300px"><div class="card-body py-2">
+    <div class="d-flex justify-content-between"><label class="form-label mb-0" for="margin">Biên lợi nhuận gộp</label><b id="marginV">{{ rules.bien_loi_nhuan|pct }}</b></div>
+    <input type="range" class="form-range" id="margin" min="0.4" max="0.85" step="0.01" value="{{ rules.bien_loi_nhuan }}"></div></div>
+</div>
+<div class="figures mb-4" id="clvCards">
+  {% for id, icon, label, sub in [("kRev","bi-cash-stack","Doanh thu ghi nhận mỗi tháng","trung bình 3 tháng gần nhất, gồm thẻ và PT"),("kArpu","bi-person-badge","ARPU","doanh thu mỗi hội viên mỗi tháng"),("kLife","bi-hourglass-split","Tuổi thọ kỳ vọng",""),("kClv","bi-gem","CLV dự báo mỗi hội viên","")] %}
+  <div><div class="stat-label">{{ label }}</div><div class="stat-value" id="{{ id }}">…</div><div class="stat-delta" id="{{ id }}s">{{ sub }}</div></div>
+  {% endfor %}
+</div>
+<div class="card mb-3"><div class="card-header"><h5 class="card-title">CLV dự báo theo chi nhánh</h5></div>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Chi nhánh</th><th class="text-end">Hội viên hoạt động</th><th class="text-end">Doanh thu / tháng</th><th class="text-end">ARPU / tháng</th><th class="text-end">Churn / tháng</th><th class="text-end">Tuổi thọ</th><th class="text-end">CLV dự báo</th></tr></thead>
+  <tbody id="clvRows"></tbody></table></div></div>
+<section class="card mb-3">
+  <div class="card-header"><div><h2 class="card-title">Rủi ro theo giá trị khách</h2></div></div>
+  <table class="heat" style="max-width:720px">
+    <tr><th></th>{% for r in ['Cực kỳ nguy hiểm', 'Rủi ro cao', 'Trung bình', 'An toàn'] %}<th scope="col">{{ r }}</th>{% endfor %}</tr>
+    {% set mx = [c.matrix.values.max(), 1]|max %}
+    {% for tier in CLV_ORDER %}<tr><th class="rowh" scope="row">CLV {{ tier }}</th>
+      {% for r in RISK_ORDER %}{% set v = c.matrix.loc[tier, r]|int %}{% set a = (v / mx * 0.8 + 0.08) if v else 0.03 %}
+      <td style="background:rgba(142,124,195,{{ '%.2f'|format(a) }});color:{{ '#fff' if a > 0.5 else 'inherit' }}">{{ v }}</td>{% endfor %}</tr>{% endfor %}
+  </table>
+</section>
+<div class="row g-3 mb-3">
+  <div class="col-12"><div class="card h-100"><div class="card-header"><div><h5 class="card-title">Phân bố CLV tích lũy</h5></div></div>
+    <div class="card-body"><div class="chart-box"><canvas id="cHist"></canvas></div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const H = {{ c.hist|tojson }}, BINS = {{ c.bins|tojson }};
+makeChart("cHist", { type: "bar", data: { labels: BINS.map(b => b + "–" + (+b + 1)), datasets: ["Low", "Medium", "VIP"].map(t => ({ label: "CLV " + t, data: H[t], backgroundColor: CLV_COLORS[t], borderRadius: 3 })) },
+  options: { plugins: { legend: { position: "top", align: "end" } }, scales: { x: { ...axisNoGrid, stacked: true, title: { display: true, text: "triệu đồng" } }, y: { ...axisGrid, stacked: true, ticks: { precision: 0 } } } } });
+let tmr;
+async function loadClv() {
+  const m = document.getElementById("margin").value;
+  document.getElementById("marginV").textContent = pct(+m);
+  const j = await api("/api/clv?margin=" + m, undefined, "GET"), t = j.total;
+  document.getElementById("kRev").textContent = tr(t.rev);
+  document.getElementById("kArpu").textContent = tr(t.arpu);
+  document.getElementById("kLife").textContent = t.life ? vn(t.life, 1) + " tháng" : "–";
+  document.getElementById("kLifes").textContent = t.churn ? "= 1 / churn " + pct(t.churn, 1) + " mỗi tháng" : "";
+  document.getElementById("kClv").textContent = tr(t.clv);
+  document.getElementById("kClvs").textContent = "biên lợi nhuận " + pct(+m);
+  document.getElementById("clvRows").innerHTML = j.rows.map(r => `<tr><td class="fw-semibold">${esc(r.cn)}</td><td class="text-end">${vn(r.active)}</td><td class="text-end">${vnd(r.rev)}</td>
+    <td class="text-end">${vnd(r.arpu)}</td><td class="text-end">${pct(r.churn, 1)}</td><td class="text-end">${r.life ? vn(r.life, 1) + " tháng" : "–"}</td><td class="text-end fw-semibold">${vnd(r.clv)}</td></tr>`).join("");
+}
+document.getElementById("margin").oninput = () => { document.getElementById("marginV").textContent = pct(+document.getElementById("margin").value); clearTimeout(tmr); tmr = setTimeout(loadClv, 150); };
+loadClv();
+</script>
+{% endblock %}

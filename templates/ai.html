@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% set page_title = "Dự báo AI" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Dự báo AI</h1></div>
+  <div class="page-actions"><button class="btn btn-outline-secondary" id="btnRetrain"><i class="bi bi-arrow-repeat me-1"></i>Huấn luyện lại</button></div>
+</div>
+{% if not a.b %}
+<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>AI chưa sẵn sàng: {{ st.ai_error or 'chưa đủ dữ liệu' }}. Hệ thống vẫn dùng Churn Score theo quy tắc.</div>
+{% else %}
+{% set mt = a.m %}
+<div class="figures mb-4">
+  {% set cards = [
+    ("bi-bullseye", "Độ chính xác AI (AUC)", (mt.auc_ai|num(2)) if mt.auc_ai else "–", "kiểm định trên giai đoạn mới nhất", "up"),
+    ("bi-rulers", "Quy tắc tài liệu (AUC)", (mt.auc_rule|num(2)) if mt.auc_rule else "–", "cùng tập kiểm định, để so sánh", ""),
+    ("bi-crosshair", "Bắt được khách sẽ bỏ", mt.bat_duoc_top20|pct if mt.bat_duoc_top20 else "–", "khi gọi 20% khách AI xếp rủi ro nhất", "up"),
+  ] %}
+  {% for icon, label, value, delta, cls in cards %}
+  <div><div class="stat-label">{{ label }}</div><div class="stat-value">{{ value }}</div><div class="stat-delta {{ cls }}">{{ delta }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header"><div><h5 class="card-title">Kiểm chứng theo mức Churn Score</h5></div></div>
+    <div class="card-body"><div class="chart-box"><canvas id="cLevel"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header"><div><h5 class="card-title">Kiểm chứng theo xác suất AI</h5></div></div>
+    <div class="card-body"><div class="chart-box"><canvas id="cBand"></canvas></div></div></div></div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-12"><div class="card h-100"><div class="card-header"><div><h5 class="card-title">Yếu tố ảnh hưởng nhiều nhất</h5></div></div>
+    <div class="card-body"><div class="chart-box sm"><canvas id="cImp"></canvas></div></div></div></div>
+</div>
+<div class="card"><div class="card-header"><div><h5 class="card-title">Rủi ro ẩn</h5></div>
+  <span class="badge text-bg-warning">{{ a.hidden|length }} khách</span></div>
+  <div class="table-wrap"><table class="table table-hover table-click"><thead><tr><th>Hội viên</th><th>Chi nhánh</th><th>AI dự báo</th><th>Churn</th><th>Lý do (quy tắc)</th></tr></thead><tbody>
+  {% for h in a.hidden.itertuples() %}<tr onclick="location.href='/can-thiep?ma={{ h.ma_hv }}'"><td><div class="fw-semibold">{{ h.ho_ten }}</div><div class="small text-secondary">{{ h.ma_hv }}, {{ h.so_dien_thoai }}</div></td>
+    <td>{{ h.chi_nhanh }}</td><td class="fw-semibold">{{ h.p_ai|pct }}</td><td>{{ h.churn_score }}</td><td class="small text-secondary">{{ h.ly_do }}</td></tr>
+  {% else %}<tr><td colspan="5"><div class="empty-state"><i class="bi bi-shield-check"></i><div class="mt-2">Không có khách rủi ro ẩn</div></div></td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+{% if a.b %}
+const M = {{ {"theo_muc": a.m.get("theo_muc", []), "theo_ai": a.m.get("theo_ai", [])}|tojson }};
+const rateBar = (id, labels, rates, ns, colors) => makeChart(id, { type: "bar", data: { labels, datasets: [{ data: rates, backgroundColor: colors, borderRadius: 6, maxBarThickness: 56 }] },
+  options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `Bỏ thật ${pct(c.raw)} trong ${vn(ns[c.dataIndex])} khách` } } },
+    scales: { x: axisNoGrid, y: { ...axisGrid, max: 1, ticks: { callback: v => pct(v) } } } },
+  plugins: [{ id: "lbl", afterDatasetsDraw(c) { const ctx = c.ctx; ctx.save(); ctx.font = "600 12px Inter"; ctx.fillStyle = cssVar("--ink"); ctx.textAlign = "center";
+    c.getDatasetMeta(0).data.forEach((b, i) => ctx.fillText(pct(rates[i]), b.x, b.y - 6)); ctx.restore(); } }] });
+rateBar("cLevel", M.theo_muc.map(r => r[0]), M.theo_muc.map(r => r[2]), M.theo_muc.map(r => r[1]), M.theo_muc.map(r => RISK_COLORS[r[0]]));
+rateBar("cBand", M.theo_ai.map(r => r[0]), M.theo_ai.map(r => r[2]), M.theo_ai.map(r => r[1]), M.theo_ai.map((r, i) => ["#e2dbf0", "#b3a5d6", "#7d6aa8", BRAND][i] || BRAND));
+makeChart("cImp", { type: "bar", data: { labels: {{ a.imp_labels|tojson }}, datasets: [{ data: {{ a.imp_values|tojson }}, backgroundColor: BRAND, borderRadius: 4, maxBarThickness: 18 }] },
+  options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: axisGrid, y: axisNoGrid } } });
+
+{% endif %}
+document.getElementById("btnRetrain").onclick = async e => {
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang học…';
+  try { await api("/api/retrain", {}); toast("Đã huấn luyện lại mô hình AI"); setTimeout(() => location.reload(), 600); }
+  catch (err) { toast(err.message, "danger"); b.disabled = false; b.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Huấn luyện lại'; }
+};
+</script>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% set page_title = "Trang chủ" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Trang chủ</h1><div class="sub">{{ ov.today }}. Dữ liệu đến {{ data_date }}.</div></div>
+</div>
+<div class="today-wrap">
+<section class="card">
+  <div class="card-header"><div><h2 class="card-title">Gọi trước những người này</h2>
+    </div>
+    {% if ov.n_todo > ov.queue|length %}<a href="/can-thiep">Xem cả {{ ov.n_todo }} người</a>{% endif %}</div>
+  <div style="border-top:1px solid var(--line-strong)">
+    {% for x in ov.queue %}
+    <a class="queue-row" href="/can-thiep?ma={{ x.ma_hv }}">
+      <span class="score {{ {'Cực kỳ nguy hiểm':'s-crit','Rủi ro cao':'s-high','Rủi ro trung bình':'s-med'}.get(x.muc_rui_ro, 's-safe') }}" title="Churn Score">{{ x.churn_score }}</span>
+      <span class="min-w-0"><span class="who d-block text-truncate">{{ x.ho_ten }}<span class="meta fw-normal ms-2">{{ x.so_dien_thoai }}{% if branch == ALL %}, {{ x.chi_nhanh }}{% endif %}</span></span>
+        <span class="why d-block">{{ x.ly_do }}</span></span>
+      <span class="clv"><span>{{ x.clv|tr }}</span><span class="meta d-block">CLV {{ x.hang_clv }}</span></span>
+    </a>
+    {% else %}
+    <div class="empty-state">Không còn ai trong danh sách hôm nay.</div>
+    {% endfor %}
+  </div>
+</section>
+  <figure class="m-0">
+    <div class="aura-wrap" id="auraWrap">
+      <canvas id="aura" role="img" aria-label="Mỗi chấm là một hội viên: càng xa tâm, nguy cơ rời bỏ càng cao. {{ ov.charts.risk[0] }} cực kỳ nguy hiểm, {{ ov.charts.risk[1] }} rủi ro cao, {{ ov.charts.risk[2] }} trung bình, {{ ov.charts.risk[3] }} an toàn."></canvas>
+      <div class="aura-tip" id="auraTip"></div>
+    </div>
+    <figcaption class="aura-key">
+      {% for r in RISK_ORDER %}<span><i style="background:{{ RISK_COLORS[r] }}"></i>{{ r }} {{ ov.charts.risk[loop.index0] }}</span>{% endfor %}
+    </figcaption>
+  </figure>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DOTS = {{ ov.dots|tojson }};   // [ma, tên, điểm, mức, hạng CLV, chi nhánh, đã gọi]
+const ALL_BRANCH = {{ 'true' if branch == ALL else 'false' }};
+
+// ---------- Vầng aura ----------
+(function () {
+  const wrap = document.getElementById("auraWrap"), cv = document.getElementById("aura"), tip = document.getElementById("auraTip");
+  if (!cv) return;
+  const ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const hash = s => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
+  const branches = [...new Set(DOTS.map(d => d[5]))].sort();
+  let pts = [], size = 0, dpr = 1, progress = reduce ? 1 : 0;
+  function layout() {
+    dpr = Math.min(2, devicePixelRatio || 1); size = wrap.clientWidth;
+    cv.width = size * dpr; cv.height = size * dpr;
+    const R = size * 0.40, c = size / 2;
+    pts = DOTS.map(d => {
+      const h1 = hash(d[0]), h2 = hash(d[0] + "r");
+      let a;
+      if (ALL_BRANCH && branches.length > 1) {
+        const k = branches.indexOf(d[5]), sec = Math.PI * 2 / branches.length;
+        a = -Math.PI / 2 + k * sec + sec * (0.06 + 0.88 * h1);
+      } else a = h1 * Math.PI * 2;
+      const h3 = hash(d[0] + "j");
+      const r = R * (0.1 + 0.86 * Math.min(100, d[2]) / 100) + (h2 + h3 - 1) * R * 0.075;   // tản đều giữa các bậc điểm
+      const sz = d[4] === "VIP" ? 4.6 : d[4] === "Medium" ? 3.2 : 2.3;
+      return { d, a, r, sz, x: 0, y: 0, c };
+    });
+    return { R, c };
+  }
+  let geo = layout();
+  function draw() {
+    const { R, c } = geo;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, size, size);
+    const brand = cssVar("--accent"), line = cssVar("--line-strong"), muted = cssVar("--muted");
+    // quầng sáng: đậm ở tâm (gắn bó), nhạt dần ra rìa
+    const g = ctx.createRadialGradient(c, c, 0, c, c, R * 1.08);
+    g.addColorStop(0, brand + "30"); g.addColorStop(.35, brand + "18"); g.addColorStop(.75, brand + "07"); g.addColorStop(1, brand + "00");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c, c, R * 1.08, 0, Math.PI * 2); ctx.fill();
+    // vòng ngưỡng 25 / 50 / 75
+    ctx.setLineDash([2, 5]); ctx.lineWidth = 1; ctx.strokeStyle = line;
+    [25, 50, 75].forEach(s => { ctx.beginPath(); ctx.arc(c, c, R * (0.1 + 0.86 * s / 100), 0, Math.PI * 2); ctx.stroke(); });
+    ctx.setLineDash([]);
+    ctx.fillStyle = muted; ctx.font = "500 10px Inter"; ctx.textAlign = "left";
+    [25, 50, 75].forEach(s => ctx.fillText(s, c + 4, c - R * (0.1 + 0.86 * s / 100) - 3));
+    // tên chi nhánh ở rìa mỗi góc phần
+    if (ALL_BRANCH && branches.length > 1) {
+      ctx.font = "500 12px Inter"; ctx.fillStyle = cssVar("--ink-2"); ctx.textAlign = "center";
+      branches.forEach((b, k) => { const sec = Math.PI * 2 / branches.length, a = -Math.PI / 2 + (k + .5) * sec;
+        ctx.fillText(b, c + Math.cos(a) * R * 1.16, c + Math.sin(a) * R * 1.16 + 4); });
+      ctx.strokeStyle = line; ctx.globalAlpha = .6;
+      branches.forEach((b, k) => { const a = -Math.PI / 2 + k * Math.PI * 2 / branches.length;
+        ctx.beginPath(); ctx.moveTo(c + Math.cos(a) * R * .1, c + Math.sin(a) * R * .1); ctx.lineTo(c + Math.cos(a) * R * 1.02, c + Math.sin(a) * R * 1.02); ctx.stroke(); });
+      ctx.globalAlpha = 1;
+    }
+    // chấm hội viên: an toàn vẽ trước, nguy hiểm vẽ sau cùng
+    const e = 1 - Math.pow(1 - progress, 3);
+    const order = ["An toàn", "Rủi ro trung bình", "Rủi ro cao", "Cực kỳ nguy hiểm"];
+    pts.slice().sort((p, q) => order.indexOf(p.d[3]) - order.indexOf(q.d[3])).forEach(p => {
+      const r = p.r * e; p.x = c + Math.cos(p.a) * r; p.y = c + Math.sin(p.a) * r;
+      const col = RISK_COLORS[p.d[3]];
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.sz, 0, Math.PI * 2);
+      if (p.d[6]) { ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.stroke(); }          // đã gọi: chấm rỗng
+      else { ctx.globalAlpha = p.d[3] === "An toàn" ? .55 : .92; ctx.fillStyle = col; ctx.fill(); ctx.globalAlpha = 1; }
+    });
+  }
+  function animate(t0) { const step = t => { progress = Math.min(1, (t - t0) / 1100); draw(); if (progress < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+  draw(); if (!reduce) animate(performance.now());
+  new ResizeObserver(() => { geo = layout(); draw(); }).observe(wrap);
+  let hot = null;
+  cv.addEventListener("mousemove", ev => {
+    const b = cv.getBoundingClientRect(), x = ev.clientX - b.left, y = ev.clientY - b.top;
+    let best = null, bd = 100;
+    pts.forEach(p => { const dd = (p.x - x) ** 2 + (p.y - y) ** 2; if (dd < bd) { bd = dd; best = p; } });
+    hot = best;
+    if (best) { tip.textContent = `${best.d[1]}, ${best.d[2]} điểm, ${best.d[5]}`; tip.style.left = best.x + "px"; tip.style.top = best.y + "px"; tip.style.opacity = 1; cv.style.cursor = "pointer"; }
+    else { tip.style.opacity = 0; cv.style.cursor = "default"; }
+  });
+  cv.addEventListener("mouseleave", () => { tip.style.opacity = 0; hot = null; });
+  cv.addEventListener("click", () => { if (hot) location.href = "/hoi-vien/" + encodeURIComponent(hot.d[0]); });
+})();
+
+</script>
+{% endblock %}

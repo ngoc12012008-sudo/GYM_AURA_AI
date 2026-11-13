@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set page_title = "Quỹ sửa chữa" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Quỹ sửa chữa</h1></div>
+  <div class="page-actions"><button class="btn btn-primary" id="btnRun"><i class="bi bi-play-fill me-1"></i>Chạy mô phỏng</button></div>
+</div>
+<div class="card mb-3"><div class="card-body"><div class="row g-3 align-items-end">
+  <div class="col-md-3"><label class="form-label">Doanh thu ghi nhận / tháng (triệu)</label><input type="number" class="form-control" id="pRev" step="10" value="{{ (r.rev / 1e6)|round|int }}"></div>
+  <div class="col-md-3"><div class="d-flex justify-content-between"><label class="form-label">Tỷ lệ trích quỹ</label><b id="pRateV">6,0%</b></div>
+    <input type="range" class="form-range" id="pRate" min="0" max="0.3" step="0.005" value="0.06"></div>
+  <div class="col-md-2"><label class="form-label">Quỹ ban đầu (triệu)</label><input type="number" class="form-control" id="pStart" step="5" value="0"></div>
+  <div class="col-md-2"><label class="form-label">Số tháng</label><select class="form-select" id="pMonths"><option>6</option><option selected>12</option><option>24</option></select></div>
+  <div class="col-md-2"><label class="form-label">Chấp nhận thiếu quỹ</label><select class="form-select" id="pTarget"><option value="0.01">1%</option><option value="0.05" selected>5%</option><option value="0.1">10%</option></select></div>
+</div></div></div>
+
+<div class="figures mb-4">
+  {% for id, icon, label in [("kMean","bi-wrench","Chi phí trung bình mỗi tháng"),("kP95","bi-cloud-drizzle","Tháng xấu (1/20)"),("kP99","bi-cloud-lightning-rain","Tháng rất xấu (1/100)"),("kShort","bi-piggy-bank","Xác suất thiếu quỹ")] %}
+  <div><div class="stat-label">{{ label }}</div><div class="stat-value" id="{{ id }}">…</div><div class="stat-delta" id="{{ id }}s"></div></div>
+  {% endfor %}
+</div>
+<div id="verdict" class="alert d-none mb-3"></div>
+<div class="row g-3 mb-3">
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="card-title">Phân phối chi phí 1 tháng (triệu)</h5></div><div class="card-body"><div class="chart-box"><canvas id="cHist"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="card-title">Số dư quỹ dự phòng (triệu)</h5></div><div class="card-body"><div class="chart-box"><canvas id="cFund"></canvas></div></div></div></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h5 class="card-title">Chi phí trung bình / năm theo hạng mục</h5></div><div class="card-body"><div class="chart-box lg"><canvas id="cItems"></canvas></div></div></div></div>
+  <div class="col-lg-7"><div class="card h-100"><div class="card-header"><div><h5 class="card-title">Danh sách thiết bị</h5></div>
+    <button class="btn btn-sm btn-outline-secondary" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> Khôi phục</button></div>
+    <div class="table-wrap" style="max-height:420px"><table class="table table-sm" id="eqT"><thead><tr><th>Thiết bị</th>{% if branch == ALL %}<th>CN</th>{% endif %}<th>SL</th><th>Tuổi</th><th>XS hỏng/th</th><th>Chi phí TB</th><th>Chi phí nặng</th></tr></thead><tbody></tbody></table></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const EQ0 = {{ r.eq|tojson }}; let EQ = JSON.parse(JSON.stringify(EQ0));
+const ALLB = {{ 'true' if branch == ALL else 'false' }};
+const inp = (i, k, step) => `<input class="form-control form-control-sm text-end" style="min-width:${k.startsWith("chi") ? 110 : 70}px" type="number" step="${step}" data-i="${i}" data-k="${k}" value="${EQ[i][k]}">`;
+function drawEq() {
+  document.querySelector("#eqT tbody").innerHTML = EQ.map((e, i) => `<tr><td>${esc(e.ten)}</td>${ALLB ? `<td class="small text-secondary">${esc(e.chi_nhanh)}</td>` : ""}
+    <td>${inp(i, "so_luong", 1)}</td><td>${inp(i, "nam_su_dung", 1)}</td><td>${inp(i, "p_hong_thang", .005)}</td><td>${inp(i, "chi_phi_tb", 100000)}</td><td>${inp(i, "chi_phi_max", 1000000)}</td></tr>`).join("");
+  document.querySelectorAll("#eqT input").forEach(x => x.onchange = () => { EQ[x.dataset.i][x.dataset.k] = +x.value; run(); });
+}
+const rateEl = document.getElementById("pRate");
+rateEl.oninput = () => document.getElementById("pRateV").textContent = pct(+rateEl.value, 1);
+rateEl.onchange = run;
+["pRev", "pStart", "pMonths", "pTarget"].forEach(id => document.getElementById(id).onchange = run);
+async function run() {
+  const b = document.getElementById("btnRun"); b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang mô phỏng…';
+  try {
+    const rev = +document.getElementById("pRev").value, rate = +rateEl.value, target = +document.getElementById("pTarget").value;
+    const j = await api("/api/reserve", { eq: EQ, rev, rate, start: +document.getElementById("pStart").value, months: +document.getElementById("pMonths").value, target });
+    if (!j.ok) throw new Error(j.error);
+    const t = j.thang;
+    document.getElementById("kMean").textContent = tr(t.trung_binh); document.getElementById("kMeans").textContent = "= " + pct(t.trung_binh / j.rev, 1) + " doanh thu";
+    document.getElementById("kP95").textContent = tr(t.p95); document.getElementById("kP95s").textContent = "5% số tháng vượt mức này";
+    document.getElementById("kP99").textContent = tr(t.p99); document.getElementById("kP99s").textContent = "1% số tháng vượt mức này";
+    const ks = document.getElementById("kShort"); ks.textContent = pct(j.p_thieu_quy, 1); ks.style.color = j.p_thieu_quy > target ? RISK_COLORS["Cực kỳ nguy hiểm"] : RISK_COLORS["An toàn"];
+    document.getElementById("kShorts").textContent = "trong " + document.getElementById("pMonths").value + " tháng";
+    const v = document.getElementById("verdict"); v.classList.remove("d-none", "alert-success", "alert-warning");
+    if (j.p_thieu_quy > target) { v.classList.add("alert-warning"); v.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>Rủi ro thiếu quỹ vượt mức ${pct(target)}. Cần trích <b>${pct(j.ty_le_can_thiet, 1)}</b> doanh thu, hoặc giữ ${pct(rate, 1)} và để sẵn quỹ ban đầu <b>${tr(j.quy_ban_dau_can)}</b>.`; }
+    else { v.classList.add("alert-success"); v.innerHTML = `<i class="bi bi-check-circle me-1"></i>Quỹ đủ an toàn. Tỷ lệ tối thiểu cần trích: <b>${pct(j.ty_le_can_thiet, 1)}</b> doanh thu.`; }
+    makeChart("cHist", { type: "bar", data: { labels: j.edges.map(e => vn(e, 1)), datasets: [{ data: j.hist, backgroundColor: BRAND, borderRadius: 2, barPercentage: 1, categoryPercentage: .95 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { title: i => "≈ " + i[0].label + " triệu", label: c => vn(c.raw) + " tháng mô phỏng" } } }, scales: { x: { ...axisNoGrid, ticks: { maxTicksLimit: 10 } }, y: axisGrid } } });
+    const ds = (l, d, c) => ({ label: l, data: d, borderColor: c, backgroundColor: c, tension: .3, borderWidth: 2, pointRadius: 2 });
+    makeChart("cFund", { type: "line", data: { labels: j.months.map(m => "T" + m), datasets: [ds("Trung vị", j.median, BRAND), ds("5% xấu nhất", j.q05, RISK_COLORS["Rủi ro cao"]), ds("1% xấu nhất", j.q01, RISK_COLORS["Cực kỳ nguy hiểm"])] },
+      options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "top", align: "end" } }, scales: { x: axisNoGrid, y: { ...axisGrid, beginAtZero: false } } } });
+    makeChart("cItems", { type: "bar", data: { labels: j.items, datasets: [{ data: j.item_values, backgroundColor: BRAND, borderRadius: 4, maxBarThickness: 18 }] },
+      options: { indexAxis: "y", plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => vn(c.raw, 1) + " triệu/năm" } } }, scales: { x: axisGrid, y: axisNoGrid } } });
+  } catch (err) { toast(err.message, "danger"); }
+  b.disabled = false; b.innerHTML = '<i class="bi bi-play-fill me-1"></i>Chạy mô phỏng';
+}
+document.getElementById("btnRun").onclick = run;
+document.getElementById("btnReset").onclick = () => { EQ = JSON.parse(JSON.stringify(EQ0)); drawEq(); run(); };
+drawEq(); run();
+</script>
+{% endblock %}

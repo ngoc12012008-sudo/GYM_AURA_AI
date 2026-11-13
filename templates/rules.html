@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% set page_title = "Quy tắc chấm điểm" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Quy tắc chấm điểm</h1></div>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" id="btnReset"><i class="bi bi-arrow-counterclockwise me-1"></i>Mặc định</button>
+    <button class="btn btn-outline-primary" id="btnTest"><i class="bi bi-eyedropper me-1"></i>Thử trước</button>
+    <button class="btn btn-primary" id="btnSave"><i class="bi bi-check2 me-1"></i>Lưu quy tắc</button>
+  </div>
+</div>
+<div class="row g-3 mb-3">
+  {% for title, w, icon, keys in groups %}
+  <div class="col-md-6 col-xl-{{ 4 if loop.index > 3 else 4 }}">
+    <div class="card h-100"><div class="card-header"><h5 class="card-title"><i class="bi {{ icon }} me-2 text-secondary"></i>{{ title }}</h5>{% if w %}<span class="tagNone">Trọng số {{ w }}</span>{% endif %}</div>
+      <div class="card-body py-2">
+        {% for k in keys %}
+        <div class="rule-input"><label for="r_{{ k }}">{{ labels[k] }}{% if rules[k] != defaults[k] %} <span class="text-warning small">(đã đổi)</span>{% endif %}</label>
+          <input class="form-control form-control-sm" id="r_{{ k }}" data-k="{{ k }}" type="number" value="{{ rules[k] }}" data-orig="{{ rules[k] }}"
+            step="{{ 0.05 if defaults[k] is float else (500000 if k.startswith('clv') else 1) }}"></div>
+        {% endfor %}
+      </div></div>
+  </div>
+  {% endfor %}
+</div>
+<div class="card"><div class="card-header"><div><h5 class="card-title">Kiểm tra ngược</h5>
+  </div></div>
+  <div class="card-body"><div class="chart-box"><canvas id="cBt"></canvas></div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CUR = {{ bt|tojson }};
+const vals = () => { const o = {}; document.querySelectorAll("[data-k]").forEach(i => o[i.dataset.k] = i.value); return o; };
+document.querySelectorAll("[data-k]").forEach(i => i.oninput = () => i.closest(".rule-input").classList.toggle("changed", i.value !== i.dataset.orig));
+function draw(test) {
+  const ds = [{ label: "Quy tắc đang dùng", data: CUR.rate, backgroundColor: RISK.map(r => RISK_COLORS[r]), borderRadius: 6, maxBarThickness: 48 }];
+  if (test) ds.push({ label: "Quy tắc đang thử", data: test.rate, backgroundColor: RISK.map(r => RISK_COLORS[r] + "66"), borderColor: RISK.map(r => RISK_COLORS[r]), borderWidth: 1.5, borderRadius: 6, maxBarThickness: 48 });
+  makeChart("cBt", { type: "bar", data: { labels: RISK, datasets: ds },
+    options: { plugins: { legend: { display: !!test, position: "top", align: "end" }, tooltip: { callbacks: { label: c => `${c.dataset.label}: bỏ thật ${pct(c.raw)} (${vn((c.datasetIndex ? test : CUR).n[c.dataIndex])} khách)` } } },
+      scales: { x: axisNoGrid, y: { ...axisGrid, max: 1, ticks: { callback: v => pct(v) } } } } });
+}
+draw();
+document.getElementById("btnTest").onclick = async e => {
+  const b = e.currentTarget; b.disabled = true;
+  try { const t = await api("/api/rules/test", vals()); draw(t); toast("Đã thử quy tắc mới (chưa lưu)", "info"); } catch (err) { toast(err.message, "danger"); }
+  b.disabled = false;
+};
+document.getElementById("btnSave").onclick = async e => {
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang tính lại…';
+  try { await api("/api/rules/save", vals()); toast("Đã lưu quy tắc. Điểm và AI đã được tính lại."); setTimeout(() => location.reload(), 700); }
+  catch (err) { toast(err.message, "danger"); b.disabled = false; }
+};
+document.getElementById("btnReset").onclick = async () => {
+  if (!confirm("Khôi phục toàn bộ quy tắc về mặc định theo tài liệu?")) return;
+  await api("/api/rules/reset", {}); toast("Đã khôi phục mặc định"); setTimeout(() => location.reload(), 700);
+};
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="vi" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#efeeec">
+  <title>{{ page_title|default('Trang chủ') }} – Aura Gym AI</title>
+  <script>
+    (function () { var t = localStorage.getItem("aura-theme"); if (t) document.documentElement.setAttribute("data-bs-theme", t);
+      if (localStorage.getItem("aura-collapsed")) document.addEventListener("DOMContentLoaded", function () { if (innerWidth >= 992) document.body.classList.add("sidebar-collapsed"); }); })();
+  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%235a4032'/><circle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3'/></svg>">
+  <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/InterVariable.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<a class="visually-hidden-focusable position-absolute top-0 start-0 m-2 btn btn-primary" style="z-index:3000" href="#main">Bỏ qua menu</a>
+
+<aside class="admin-sidebar" aria-label="Menu chính">
+  <a href="/" class="brand" aria-label="Aura Gym AI, về trang chủ"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Aura Gym AI</span></a>
+  <nav>
+  {% for key, href, icon, label in nav %}
+    {% if href is none %}<div class="nav-section">{{ label }}</div>
+    {% else %}
+    <a href="{{ href }}" class="side-link {% if key == active %}active{% endif %}" {% if key == active %}aria-current="page"{% endif %}>
+      <i class="bi {{ icon }}" aria-hidden="true"></i><span>{{ label }}</span>
+      {% if key == 'action' and n_urgent %}<span class="count" title="{{ n_urgent }} khách rủi ro cao">{{ n_urgent }}</span>{% endif %}
+      {% if key == 'ai' and st and not ai_ok %}<span class="state">tắt</span>{% endif %}
+    </a>
+    {% endif %}
+  {% endfor %}
+  </nav>
+  <div class="side-meta">
+    {% if st %}Dữ liệu đến <b>{{ data_date }}</b>{% if ai_time %}<br>AI học lúc {{ ai_time }}{% endif %}{% else %}Chưa có dữ liệu{% endif %}
+  </div>
+</aside>
+<div class="sidebar-backdrop"></div>
+
+<header class="admin-header">
+  <button class="hdr-btn" id="sidebarToggle" aria-label="Ẩn/hiện menu" title="Ẩn/hiện menu"><i class="bi bi-layout-sidebar" aria-hidden="true"></i></button>
+  <div class="header-search" role="search">
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <input id="globalSearch" class="form-control" type="search" aria-label="Tìm hội viên" placeholder="Tìm hội viên theo tên, số điện thoại, mã…" autocomplete="off" spellcheck="false" {% if not st %}disabled{% endif %}>
+    <kbd class="d-none d-xl-inline">Ctrl K</kbd>
+    <div class="results" id="searchResults" role="listbox" aria-label="Kết quả tìm kiếm"></div>
+  </div>
+  <div class="header-actions">
+    {% if st %}
+      {% if st.branches|length <= 4 %}
+      <div class="seg seg-wrap me-2" role="group" aria-label="Chọn chi nhánh">
+        <button type="button" data-cn="{{ ALL }}" aria-pressed="{{ 'true' if branch == ALL else 'false' }}">Tất cả</button>
+        {% for b in st.branches %}<button type="button" data-cn="{{ b }}" aria-pressed="{{ 'true' if b == branch else 'false' }}">{{ b }}</button>{% endfor %}
+      </div>
+      {% else %}
+      <select id="branchSelect" class="form-select form-select-sm me-2 seg-wrap" style="width:180px" aria-label="Chọn chi nhánh">
+        <option value="{{ ALL }}">Tất cả chi nhánh</option>
+        {% for b in st.branches %}<option value="{{ b }}" {% if b == branch %}selected{% endif %}>{{ b }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <span class="data-chip d-none" id="dataDateChip">Dữ liệu đến {{ data_date }}</span>
+    {% endif %}
+    <button class="hdr-btn position-relative" id="undoBtn" aria-label="Hoàn tác" title="{{ ('Hoàn tác: ' ~ last_action.label) if last_action else 'Chưa có thao tác nào để hoàn tác' }}" {% if not last_action %}disabled{% endif %}>
+      <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>{% if last_action %}<span class="undo-dot"></span>{% endif %}</button>
+    <button class="hdr-btn" id="themeToggle" aria-label="Đổi giao diện sáng/tối" title="Giao diện sáng/tối"><i class="bi bi-sun" aria-hidden="true"></i></button>
+    <button class="user-chip ms-1" id="staffEdit" title="Đổi tên nhân viên đang trực">
+      <span class="avatar avatar-staff" aria-hidden="true">LT</span>
+      <span class="d-none d-xl-inline fw-medium" id="staffName">Lễ tân</span>
+    </button>
+  </div>
+</header>
+
+<main class="admin-main" id="main">
+  {% block content %}{% endblock %}
+</main>
+
+<div class="modal fade" id="undoModal" tabindex="-1" aria-labelledby="undoTitle"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="undoTitle">Hoàn tác thao tác vừa rồi?</h5><button class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+  <div class="modal-body">
+    <div class="undo-card"><div class="fw-semibold" id="undoLabel">{{ last_action.label if last_action else '' }}</div>
+      <div class="small text-secondary" id="undoTime">{{ ('lúc ' ~ last_action.time) if last_action else '' }}</div></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Giữ nguyên</button><button class="btn btn-primary" id="undoGo">Hoàn tác</button></div>
+</div></div></div>
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toasts" role="status" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+  document.querySelector("#themeToggle i").className = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "bi bi-moon" : "bi bi-sun";
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

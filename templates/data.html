@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% set page_title = "Cập nhật dữ liệu" %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Cập nhật dữ liệu</h1></div>
+  <div class="page-actions">
+    <a class="btn btn-outline-secondary" href="/tai/mau.xlsx"><i class="bi bi-file-earmark-excel me-1"></i>File mẫu Excel</a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-xl-7">
+    <div class="card mb-3">
+      <div class="card-header"><h5 class="card-title"><span class="step-n d-inline-grid me-2">1</span>Chọn chi nhánh và cách cập nhật</h5></div>
+      <div class="card-body">
+        <div class="row g-2 mb-3">
+          <div class="col-md-6"><label class="form-label">Chi nhánh</label>
+            <select class="form-select" id="uBranch">
+              {% set names = (st.branches if st else []) %}
+              {% for b in names %}<option value="{{ b }}" {% if b == branch %}selected{% endif %}>{{ b }}</option>{% endfor %}
+              {% for b in ["Quận 1", "Quận 7", "Biên Hòa"] if b not in names %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+              <option value="__new__">+ Chi nhánh mới…</option>
+            </select></div>
+          <div class="col-md-6 d-none" id="newWrap"><label class="form-label">Tên chi nhánh mới</label><input class="form-control" id="uNew" placeholder="VD: Thủ Đức"></div>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-6"><label class="mode-card on" id="mAppend"><input class="form-check-input" type="radio" name="mode" value="append" checked>
+            <div class="fw-semibold">Thêm dữ liệu mới</div></label></div>
+          <div class="col-md-6"><label class="mode-card" id="mReplace"><input class="form-check-input" type="radio" name="mode" value="replace">
+            <div class="fw-semibold">Thay toàn bộ dữ liệu cũ</div></label></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h5 class="card-title"><span class="step-n d-inline-grid me-2">2</span>Chọn file</h5></div>
+      <div class="card-body">
+        <label class="dropzone d-block" id="drop">
+          <input type="file" id="uFiles" multiple accept=".xlsx,.xls,.csv" class="d-none">
+          <i class="bi bi-cloud-arrow-up"></i>
+          <div class="fw-semibold mt-2">Kéo thả file vào đây hoặc bấm để chọn</div>
+        </label>
+        <div id="fileList" class="mt-3"></div>
+      </div>
+    </div>
+
+    <div class="card mb-3 d-none" id="checkCard">
+      <div class="card-header"><h5 class="card-title"><span class="step-n d-inline-grid me-2">3</span>Kiểm tra & cập nhật</h5><span id="checkBadge"></span></div>
+      <div class="card-body">
+        <ul class="report list-unstyled mb-3" id="report"></ul>
+        <ul class="nav nav-tabs mb-2" id="pvTabs"></ul>
+        <div id="pvBody" class="table-wrap mb-3"></div>
+        <button class="btn btn-primary btn-lg w-100" id="btnCommit" disabled><i class="bi bi-cloud-check me-1"></i>Cập nhật vào hệ thống</button>
+      </div>
+    </div>
+    <div class="alert alert-success d-none" id="doneBox"></div>
+    <div class="card mb-3" id="lichsu">
+      <div class="card-header"><div><h5 class="card-title">Lịch sử thay đổi</h5>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" id="btnUndoTop" {% if not history %}disabled{% endif %}><i class="bi bi-arrow-counterclockwise me-1"></i>Hoàn tác thao tác gần nhất</button></div>
+      <div class="card-body py-2" id="histList"></div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card mb-3">
+      <div class="card-header"><div><h5 class="card-title">Hiện trạng dữ liệu</h5><div class="card-sub" id="sumSub">{% if st %}Dữ liệu mới nhất đến {{ data_date }}{% else %}Chưa có dữ liệu{% endif %}</div></div></div>
+      <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Chi nhánh</th><th class="text-end">Hội viên</th><th class="text-end">Còn hạn</th><th class="text-end">Check-in</th><th>Dữ liệu đến</th><th></th></tr></thead>
+        <tbody id="sumRows"></tbody></table></div>
+    </div>
+    <details class="card mb-3 file-spec"><summary class="card-title" style="cursor:pointer">Cấu trúc file cần có</summary>
+      <div class="card-body small">
+        {% for t, sc in tables.items() %}
+        <div class="mb-2"><b>{{ t }}</b> – {{ desc[t] }}<br><span class="text-secondary">Bắt buộc:</span> <code>{{ sc.req|join(', ') }}</code>{% if sc.opt %}; <span class="text-secondary">tùy chọn:</span> <code>{{ sc.opt|join(', ') }}</code>{% endif %}</div>
+        {% endfor %}
+        <div class="text-secondary mt-2">Ngày dạng <code>2026-11-07</code> hoặc <code>07/11/2026</code>; giá <code>2400000</code> hoặc <code>2.400.000</code>. Mỗi lần gia hạn là một dòng mới trong goi_the. Tên cột tiếng Việt có dấu cũng được nhận.</div>
+        <div class="mt-3 d-flex gap-2"><a class="btn btn-sm btn-outline-secondary" href="/tai/mau.xlsx"><i class="bi bi-file-earmark-excel"></i> Mẫu Excel</a><a class="btn btn-sm btn-outline-secondary" href="/tai/mau-csv.zip"><i class="bi bi-file-zip"></i> Mẫu CSV</a></div>
+      </div>
+    </details>
+    <div class="card mb-3">
+      <div class="card-header"><h5 class="card-title">Công cụ khác</h5></div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center gap-3 mb-3"><div class="fw-semibold">Nạp lại từ thư mục raw/</div>
+          <button class="btn btn-sm btn-outline-secondary text-nowrap" id="btnReload"><i class="bi bi-arrow-repeat"></i> Nạp lại</button></div>
+        <div class="d-flex justify-content-between align-items-center gap-3"><div class="fw-semibold">Tạo dữ liệu mẫu</div>
+          <button class="btn btn-sm btn-outline-secondary text-nowrap" id="btnSample"><i class="bi bi-magic"></i> Tạo mẫu</button></div>
+      </div>
+    </div>
+    <div class="card danger-zone">
+      <div class="card-header"><h5 class="card-title text-danger">Xóa dữ liệu</h5></div>
+      <div class="card-body">
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#resetModal" {% if not st %}disabled{% endif %}><i class="bi bi-trash3 me-1"></i>Xóa toàn bộ dữ liệu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="resetModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title text-danger"><i class="bi bi-trash3 me-2"></i>Xóa toàn bộ dữ liệu?</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="alert alert-danger small mb-3">Toàn bộ dữ liệu của <b>{{ (st.branches|length) if st else 0 }} chi nhánh</b> sẽ bị xóa. Các trang sẽ trống cho đến khi bạn nhập dữ liệu mới.
+      Bạn vẫn có thể <b>hoàn tác</b> ngay sau đó.</div>
+    <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="rsContacts"><label class="form-check-label" for="rsContacts">Xóa cả lịch sử liên hệ (các cuộc gọi đã ghi)</label></div>
+    <label class="form-label" for="rsConfirm">Gõ <b>XÓA</b> để xác nhận</label>
+    <input class="form-control" id="rsConfirm" autocomplete="off" placeholder="XÓA">
+  </div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Thôi</button><button class="btn btn-danger" id="rsGo" disabled><i class="bi bi-trash3 me-1"></i>Xóa toàn bộ</button></div>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let HIST = {{ (history or [])|tojson }};
+let SUM = {{ (summary if summary is not callable else [])|tojson }}, TOKEN = null, FILES = [];
+const $ = id => document.getElementById(id);
+function drawSummary() {
+  $("sumRows").innerHTML = SUM.length ? SUM.map(r => `<tr><td class="fw-semibold">${esc(r.cn)}</td><td class="text-end">${vn(r.hv)}</td><td class="text-end">${vn(r.active)}</td><td class="text-end">${vn(r.checkin)}</td>
+    <td class="small text-nowrap"><b>${esc(r.den)}</b></td><td><a class="btn btn-sm btn-outline-secondary btn-icon" style="width:30px;height:30px" title="Tải dữ liệu chi nhánh (Excel)" href="/tai/chi-nhanh/${encodeURIComponent(r.cn)}.xlsx"><i class="bi bi-download"></i></a></td></tr>`).join("")
+    : `<tr><td colspan="6"><div class="empty-state py-4"><i class="bi bi-database-x"></i><div class="mt-2">Chưa có dữ liệu</div></div></td></tr>`;
+}
+const branchName = () => $("uBranch").value === "__new__" ? $("uNew").value.trim() : $("uBranch").value;
+const mode = () => document.querySelector("input[name=mode]:checked").value;
+$("uBranch").onchange = () => { $("newWrap").classList.toggle("d-none", $("uBranch").value !== "__new__"); if (FILES.length) check(); };
+$("uNew").onchange = () => FILES.length && check();
+document.querySelectorAll("input[name=mode]").forEach(r => r.onchange = () => {
+  $("mAppend").classList.toggle("on", mode() === "append"); $("mReplace").classList.toggle("on", mode() === "replace"); if (FILES.length) check(); });
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", e => { FILES = [...e.dataTransfer.files]; check(); });
+$("uFiles").onchange = e => { FILES = [...e.target.files]; check(); };
+
+async function check() {
+  $("doneBox").classList.add("d-none");
+  if (!branchName()) { toast("Hãy nhập tên chi nhánh mới", "warning"); return; }
+  const fd = new FormData(); fd.append("branch", branchName()); fd.append("mode", mode());
+  FILES.forEach(f => fd.append("files", f, f.name));
+  $("fileList").innerHTML = `<div class="text-secondary"><i class="bi bi-arrow-repeat spin me-1"></i>Đang đọc và kiểm tra ${FILES.length} file…</div>`;
+  $("checkCard").classList.add("d-none"); $("btnCommit").disabled = true;
+  let j;
+  try { j = await api("/api/upload/check", fd); } catch (err) { $("fileList").innerHTML = ""; toast(err.message, "danger"); return; }
+  TOKEN = j.token;
+  $("fileList").innerHTML = (j.files || []).map(f => `<div class="d-flex align-items-start gap-2 py-2 border-bottom"><i class="bi ${f.error ? "bi-x-circle text-danger" : "bi-file-earmark-check text-success"} fs-5"></i>
+    <div><div class="fw-semibold">${esc(f.name)}</div><div class="small text-secondary">${f.error ? esc(f.error) : Object.entries(f.sheets).map(([k, v]) => `${esc(k)}: ${vn(v)} dòng`).join(", ")}</div></div></div>`).join("");
+  const icon = { error: "bi-x-circle-fill text-danger", warning: "bi-exclamation-triangle-fill text-warning", info: "bi-info-circle-fill text-primary", ok: "bi-check-circle-fill text-success" };
+  $("report").innerHTML = (j.report || []).map(([l, m]) => `<li><i class="bi ${icon[l]}"></i><span>${esc(m)}</span></li>`).join("");
+  const pv = j.preview || {}, keys = Object.keys(pv);
+  $("pvTabs").innerHTML = keys.map((k, i) => `<li class="nav-item"><button class="nav-link ${i ? "" : "active"}" data-k="${k}">${k} <span class="text-secondary">(${vn(pv[k].n)})</span></button></li>`).join("");
+  const showPv = k => { const p = pv[k]; $("pvBody").innerHTML = (p.range ? `<div class="small text-secondary mb-2">Từ ${p.range[0]} đến ${p.range[1]}</div>` : "") +
+    `<table class="table table-sm"><thead><tr>${p.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${p.rows.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    document.querySelectorAll("#pvTabs .nav-link").forEach(b => b.classList.toggle("active", b.dataset.k === k)); };
+  document.querySelectorAll("#pvTabs .nav-link").forEach(b => b.onclick = () => showPv(b.dataset.k));
+  if (keys.length) showPv(keys[0]); else $("pvBody").innerHTML = "";
+  $("checkBadge").innerHTML = j.ok ? '<span class="tagNone">Hợp lệ</span>' : '<span class="tag warnNone">Có lỗi – chưa thể cập nhật</span>';
+  $("btnCommit").disabled = !j.ok;
+  $("btnCommit").innerHTML = `<i class="bi bi-cloud-check me-1"></i>${mode() === "append" ? "Thêm vào" : "Thay"} dữ liệu chi nhánh ${esc(branchName())}`;
+  $("checkCard").classList.remove("d-none");
+}
+$("btnCommit").onclick = async () => {
+  const b = $("btnCommit"); b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang lưu, chấm điểm lại và cho AI học lại…';
+  try {
+    const j = await api("/api/upload/commit", { token: TOKEN });
+    if (!j.ok) throw new Error(j.error);
+    SUM = j.summary; drawSummary();
+    $("sumSub").textContent = "Dữ liệu mới nhất đến " + j.data_date;
+    const chip = $("dataDateChip"); if (chip) chip.innerHTML = '<i class="bi bi-database-check me-1"></i>Dữ liệu đến ' + j.data_date;
+    $("checkCard").classList.add("d-none"); $("fileList").innerHTML = ""; FILES = []; $("uFiles").value = "";
+    const i = j.info || {};
+    $("doneBox").innerHTML = `<div class="d-flex gap-3"><i class="bi bi-check-circle-fill fs-3"></i><div><div class="fw-semibold">Đã cập nhật chi nhánh ${esc(j.branch)} trong ${vn(j.seconds, 1)} giây</div>
+      <div class="small">${vn(i.hv)} hội viên, ${vn(i.active)} đang còn hạn, dữ liệu từ ${esc(i.tu)} đến ${esc(i.den)}.${j.ai ? " AI đã học lại lúc " + esc(j.ai) + "." : ""}</div>
+      <div class="mt-2 d-flex flex-wrap gap-2"><a href="/" class="btn btn-sm btn-success">Xem Tổng quan</a><a href="/can-thiep" class="btn btn-sm btn-outline-success">Danh sách can thiệp</a>
+      <button class="btn btn-sm btn-outline-secondary" onclick="undoLatest(this)"><i class="bi bi-arrow-counterclockwise"></i> Lỡ nhập sai? Hoàn tác</button></div></div></div>`;
+    $("doneBox").classList.remove("d-none");
+    if (!document.getElementById("branchSelect")) setTimeout(() => location.reload(), 1200);   // lần đầu có dữ liệu: tải lại để hiện menu chi nhánh
+    toast("Cập nhật dữ liệu thành công");
+    HIST = await api("/api/history", undefined, "GET"); drawHist();
+    const ub = document.getElementById("undoBtn"); if (ub && HIST[0]) { ub.disabled = false; ub.title = "Hoàn tác: " + HIST[0].label;
+      document.getElementById("undoLabel").textContent = HIST[0].label; document.getElementById("undoTime").textContent = "lúc " + HIST[0].time;
+      if (!ub.querySelector(".undo-dot")) ub.insertAdjacentHTML("beforeend", '<span class="undo-dot"></span>'); }
+  } catch (err) { toast(err.message, "danger"); b.disabled = false; b.innerHTML = '<i class="bi bi-cloud-check me-1"></i>Thử lại'; }
+};
+$("btnReload").onclick = async e => {
+  if (!confirm("Nạp lại toàn bộ dữ liệu từ thư mục raw/? Dữ liệu đã nhập trên web cũng được lưu trong raw/ nên không bị mất.")) return;
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Đang nạp…';
+  try { const j = await api("/api/reload-raw", {}); toast(j.ok ? "Đã nạp lại dữ liệu" : "Nạp xong nhưng có file lỗi", j.ok ? "success" : "warning"); setTimeout(() => location.reload(), 600); }
+  catch (err) { toast(err.message, "danger"); b.disabled = false; }
+};
+$("btnSample").onclick = async e => {
+  if (!confirm("Tạo lại dữ liệu mẫu 3 chi nhánh × 300 khách? Dữ liệu hiện tại của 3 chi nhánh mẫu sẽ bị ghi đè.")) return;
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Đang tạo…';
+  try { await api("/api/sample", {}); toast("Đã tạo dữ liệu mẫu"); setTimeout(() => location.reload(), 600); }
+  catch (err) { toast(err.message, "danger"); b.disabled = false; }
+};
+function drawHist() {
+  const el = $("histList");
+  $("btnUndoTop").disabled = !HIST.length;
+  if (!HIST.length) { el.innerHTML = '<div class="empty-state py-4"><i class="bi bi-clock-history"></i><div class="mt-2">Chưa có thao tác nào</div></div>'; return; }
+  const ic = l => l.startsWith("Xóa") ? "bi-trash3 text-danger" : l.startsWith("Thay") ? "bi-arrow-left-right text-warning" : l.startsWith("Thêm") ? "bi-plus-circle text-success"
+    : l.includes("quy tắc") ? "bi-sliders text-primary" : "bi-arrow-repeat text-primary";
+  el.innerHTML = HIST.map((h, i) => `<div class="feed-item align-items-center"><div class="feed-icon"><i class="bi ${ic(h.label)}"></i></div>
+    <div class="flex-grow-1 min-w-0"><div class="feed-title">${esc(h.label)} ${i === 0 ? '<span class="tag ms-1">mới nhất</span>' : ""}</div>
+      <div class="feed-meta">${esc(h.time)}. Trước đó có ${vn(h.counts.hoi_vien || 0)} hội viên, ${vn(h.counts.checkin || 0)} check-in</div></div>
+    <button class="btn btn-sm ${i === 0 ? "btn-outline-primary" : "btn-outline-secondary"} text-nowrap" data-id="${h.id}" data-i="${i}">
+      <i class="bi bi-arrow-counterclockwise"></i> ${i === 0 ? "Hoàn tác" : "Về trước mốc này"}</button></div>`).join("");
+  el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+    const i = +b.dataset.i;
+    if (!confirm(i === 0 ? `Hoàn tác "${HIST[0].label}"?` : `Quay về trạng thái trước "${HIST[i].label}"?\nSẽ hủy ${i + 1} thao tác gần nhất.`)) return;
+    b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>';
+    try { afterUndo(await undo(b.dataset.id)); } catch (err) { toast(err.message, "danger"); b.disabled = false; }
+  });
+}
+async function undoLatest(btn) {
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Đang hoàn tác…';
+  try { afterUndo(await undo()); } catch (err) { toast(err.message, "danger"); btn.disabled = false; }
+}
+$("btnUndoTop").onclick = e => undoLatest(e.currentTarget);
+$("rsConfirm").oninput = e => $("rsGo").disabled = !["XÓA", "XOA"].includes(e.target.value.trim().toUpperCase());
+$("rsGo").onclick = async e => {
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang xóa…';
+  try { await api("/api/reset", { confirm: $("rsConfirm").value, contacts: $("rsContacts").checked });
+    sessionStorage.setItem("aura-flash", "Đã xóa toàn bộ dữ liệu. Có thể bấm Hoàn tác (góc trên) nếu lỡ tay."); location.reload(); }
+  catch (err) { toast(err.message, "danger"); b.disabled = false; b.innerHTML = '<i class="bi bi-trash3 me-1"></i>Xóa toàn bộ'; }
+};
+drawSummary(); drawHist();
+</script>
+{% endblock %}

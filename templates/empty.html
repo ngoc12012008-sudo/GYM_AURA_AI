@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card mt-4" style="max-width:640px;margin:auto"><div class="card-body text-center p-5">
+  <h1 class="mb-2">Chưa có dữ liệu</h1>
+  <div class="mb-4"></div>
+  <div class="d-flex justify-content-center gap-2 flex-wrap">
+    <a href="/cap-nhat" class="btn btn-primary"><i class="bi bi-cloud-arrow-up me-1"></i>Cập nhật dữ liệu</a>
+    <button class="btn btn-outline-secondary" id="btnSample"><i class="bi bi-magic me-1"></i>Tạo dữ liệu mẫu</button>
+  </div>
+  {% if last_action %}<div class="undo-card text-start mt-4"><div class="small text-secondary">Lỡ xóa nhầm? Thao tác gần nhất:</div>
+    <div class="d-flex justify-content-between align-items-center gap-3 mt-1"><div><div class="fw-semibold">{{ last_action.label }}</div><div class="small text-secondary">lúc {{ last_action.time }}</div></div>
+    <button class="btn btn-primary text-nowrap" onclick="bootstrap.Modal.getOrCreateInstance('#undoModal').show()"><i class="bi bi-arrow-counterclockwise me-1"></i>Hoàn tác</button></div></div>{% endif %}
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("btnSample").onclick = async e => {
+  const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Đang tạo dữ liệu và cho AI học…';
+  try { await api("/api/sample", {}); location.href = "/"; } catch (err) { toast(err.message, "danger"); b.disabled = false; }
+};
+</script>
+{% endblock %}
